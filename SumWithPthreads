@@ -1,0 +1,85 @@
+#include<pthread.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include<math.h>
+
+/*
+Compiled with "gcc -o output.bin Assignment.c -pthread -lm  -std=c99"
+Let the user to enter 2 parameters that represent a number to calculate the sum of all numbers less than it, and
+the number of threads to be created. Then, divide the computation task among the threads equally
+*/
+
+long long int sum = 0; //Shared data by thread
+void * runner(void * v);
+
+struct limitsStruct {
+    long long int bl;
+    long long int ul;
+    long long local_sum; //to minimize locking overhead
+};
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int main(int argc, char * argv[]) {
+
+    if (argc != 3) {
+        printf("Usage: file.o <integer value> <thread count <int>>\n");
+        return -1;
+    }
+    if (atoll(argv[1]) < 0 || atoi(argv[2]) < 0) {
+        printf("Usage: file.o <integer value> <thread count <int>>\n");
+        return -1;
+    }
+    if (atoi(argv[2]) >= atoll(argv[1])) {
+        printf("The number of threads created must be smaller than the upper limit of the series\n");
+        return -1;
+    }
+    int t_count = atoi(argv[2]); //thread count
+    long long int v = atoll(argv[1]); //value
+
+    pthread_t tid[t_count];
+    pthread_attr_t attr[t_count];
+    struct limitsStruct arg[t_count];
+    long long int bl = 0; //bottom limit in thread
+    long long int j = (int) ceil((double) v / t_count); //jump amount
+    long long int ul = j; //upper limit in thread
+
+    
+    for (int x = 0; x < t_count; x++) {
+        if(x==0){
+            arg[x].ul = ul;
+            arg[x].bl = bl;
+        }else if((ul + j) > v){
+            bl = ul + 1;
+            ul = v;
+        }else{
+            bl = ul + 1;
+            ul = ul + j;
+        }
+        arg[x].local_sum = 0;
+        arg[x].ul = ul;
+        arg[x].bl = bl;
+        pthread_attr_init( & attr[x]); //get default attributes
+        pthread_create( & tid[x], & attr[x], & runner, & arg[x]); //Create the thread
+        printf("thread %lld created with lower limit = %lld and upper limit = %lld\n\n", (x+1), bl, ul);
+
+    }
+
+    for (int x = 0; x < t_count; x++)
+        pthread_join(tid[x], NULL); //Wait for all threads to finish
+
+    printf("sum=%lld\n", sum);
+}
+
+void * runner(void * arg) {
+    struct limitsStruct * arg_p = (struct limitsStruct * ) arg;
+    long long int i = arg_p -> bl;
+    long long int upper = arg_p -> ul;
+    for (i; i <= upper; i++) {
+        (arg_p-> local_sum) += i;
+    }
+    pthread_mutex_lock( & mutex);
+    sum += (arg_p -> local_sum);
+    pthread_mutex_unlock( & mutex);
+    pthread_exit(0);
+}
